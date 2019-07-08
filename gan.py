@@ -16,6 +16,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
+import matplotlib.pyplot as plt
+
 os.makedirs("images", exist_ok=True)
 
 
@@ -140,6 +142,30 @@ dataloader = torch.utils.data.DataLoader(
         
         
 ## gmm generation data
+def gmm_sample(num_samples, mix_coeffs, mean, cov):
+    # draws samples from multinomial distributions according to the probability distribution mix_coeff
+    z = np.random.multinomial(num_samples, mix_coeffs)
+    samples = np.zeros(shape = [num_samples, len(mean[0])])
+    i_start = 0
+    labels = []
+    for i in range(len(mix_coeffs)):
+        for k in range(z[i]):
+            labels.append(i)
+        i_end = i_start + z[i]
+        samples[i_start:i_end, :] = np.random.multivariate_normal(
+                mean = np.array(mean)[i, :],
+                # np.diag here constructs a diagonal array with the rows of the cov matrix
+                cov = np.diag(np.array(cov)[i, :]),
+                size = z[i])
+        #print(cov)
+        #print(np.diag(np.array(cov)[i, :]))
+        i_start = i_end
+        #plt.scatter(samples[:, 0], samples[:, 1])
+        #data_sampler[samples]
+    #print(labels)
+    return samples, labels
+
+
 sample_size = 100
 mix_coeff = [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]
 mean = [[-5, 0], [(5/np.sqrt(2)), (5/np.sqrt(2))], [0, 5], [(5/np.sqrt(2)), (-5/np.sqrt(2))], [5, 0], [(-5/np.sqrt(2)), (5/np.sqrt(2))], [0, -5], [(-5/np.sqrt(2)), (-5/np.sqrt(2))]]
@@ -165,7 +191,7 @@ for epoch in range(n_epochs):
         gmm_labels = gmm_labels.cuda()
         # Adversarial ground truths
         valid = Variable(Tensor(data_point.size(0), 1).fill_(1.0), requires_grad=False)
-        target = Variable(labels, requires_grad=False)
+        target = Variable(gmm_labels, requires_grad=False)
         fake = Variable(Tensor(data_point.size(0), 1).fill_(0.0), requires_grad=False)
 
         # Configure input
