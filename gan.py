@@ -22,7 +22,7 @@ os.makedirs("images", exist_ok=True)
 b1 = 0.5
 b2 = 0.999
 n_cpu = 8
-  = 1
+channels = 2
 #img_size =  28
 data_size =  1
 data_vars = 2   # there are two variables(channels) that represent the gaussian data as the data is 2D
@@ -62,9 +62,12 @@ class Generator(nn.Module):
         )
 
     def forward(self, z):
-        img = self.model(z)
-        img = img.view(img.size(0), *img_shape)
-        return img
+        #img = self.model(z)
+        #img = img.view(img.size(0), *img_shape)
+        #return img
+        data = self.model(z)
+        data = data.view(img.size(0), *data_shape)
+        return data
 
 
 class Discriminator(nn.Module):
@@ -94,7 +97,8 @@ class Discriminator(nn.Module):
 
 
 
-    def forward(self, img):
+    #def forward(self, img):
+    def forward(self, data):
         #img_flat = img.view(img.size(0), -1)
         data_flat = data.view(data.size(0), -1)
         #common_representation = self.common_model(img_flat)
@@ -120,7 +124,7 @@ if cuda:
     criterion.cuda()
 
 # Configure data loader
-os.makedirs("../../data/mnist", exist_ok=True)
+'''os.makedirs("../../data/mnist", exist_ok=True)
 dataloader = torch.utils.data.DataLoader(
     datasets.MNIST(
         "../../data/mnist",
@@ -132,7 +136,18 @@ dataloader = torch.utils.data.DataLoader(
     ),
     batch_size=batch_size,
     shuffle=True,
-)
+)'''
+        
+        
+## gmm generation data
+sample_size = 100
+mix_coeff = [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]
+mean = [[-5, 0], [(5/np.sqrt(2)), (5/np.sqrt(2))], [0, 5], [(5/np.sqrt(2)), (-5/np.sqrt(2))], [5, 0], [(-5/np.sqrt(2)), (5/np.sqrt(2))], [0, -5], [(-5/np.sqrt(2)), (-5/np.sqrt(2))]]
+v = 0.02
+cov =  [[v, v], [v, v], [v, v], [v, v], [v, v], [v, v], [v, v], [v, v]]
+dataloader, gmm_labels = gmm_sample(sample_size, mix_coeff, mean, cov)
+plt.axis('equal')
+plt.scatter(dataloader[:, 0], dataloader[:, 1])
 
 # Optimizers
 optimizer_G = torch.optim.Adam(generator.parameters(), lr=lr, betas=(b1, b2))
@@ -145,15 +160,16 @@ Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 # ----------
 
 for epoch in range(n_epochs):
-    for i, (imgs, labels) in enumerate(dataloader):
-        labels = labels.cuda()
+    #for i, (imgs, labels) in enumerate(dataloader):
+    for i, data_point in enumerate(dataloader):
+        gmm_labels = gmm_labels.cuda()
         # Adversarial ground truths
-        valid = Variable(Tensor(imgs.size(0), 1).fill_(1.0), requires_grad=False)
+        valid = Variable(Tensor(data_point.size(0), 1).fill_(1.0), requires_grad=False)
         target = Variable(labels, requires_grad=False)
-        fake = Variable(Tensor(imgs.size(0), 1).fill_(0.0), requires_grad=False)
+        fake = Variable(Tensor(data_point.size(0), 1).fill_(0.0), requires_grad=False)
 
         # Configure input
-        real_imgs = Variable(imgs.type(Tensor))
+        real_data_point = Variable(data_point.type(Tensor))
 
         # -----------------
         #  Train Generator
@@ -162,13 +178,13 @@ for epoch in range(n_epochs):
         optimizer_G.zero_grad()
 
         # Sample noise as generator input
-        z = Variable(Tensor(np.random.normal(0, 1, (imgs.shape[0], latent_dim))))
+        z = Variable(Tensor(np.random.normal(0, 1, (data_point.shape[0], latent_dim))))
 
         # Generate a batch of images
-        gen_imgs = generator(z)
+        gen_data_point = generator(z)
 
         # Loss measures generator's ability to fool the discriminator
-        discriminator_fake_out, _ = discriminator(gen_imgs)
+        discriminator_fake_out, _ = discriminator(gen_data_point)
         g_loss = adversarial_loss(discriminator_fake_out, valid)
 
         g_loss.backward()
@@ -179,10 +195,10 @@ for epoch in range(n_epochs):
         # ---------------------
 
         optimizer_D.zero_grad()
-        discriminator_real_out, class_outputs = discriminator(real_imgs)
+        discriminator_real_out, class_outputs = discriminator(real_data_point)
 
         # Measure discriminator's ability to classify real from generated samples
-        fake_d_out, _ = discriminator(gen_imgs.detach())
+        fake_d_out, _ = discriminator(gen_data_point.detach())
         real_loss = adversarial_loss(discriminator_real_out, valid)
         fake_loss = adversarial_loss(fake_d_out, fake)
         multiclass_loss = criterion(class_outputs, labels)
@@ -198,5 +214,5 @@ for epoch in range(n_epochs):
         )
 
         batches_done = epoch * len(dataloader) + i
-        if batches_done % sample_interval == 0:
-            save_image(gen_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
+        #if batches_done % sample_interval == 0:
+        #    save_image(gen_data_point.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
